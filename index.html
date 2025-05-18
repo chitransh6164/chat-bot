@@ -1,0 +1,311 @@
+<!-- File: chatchit.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ChatChit - Smarter AI</title>
+  <style>
+    :root {
+      --bg: #121212;
+      --text: #ffffff;
+      --bot-bg: #333;
+      --user-bg: #007acc;
+      --header-bg: #1f1f1f;
+      --input-bg: #1f1f1f;
+      --accent: #00bcd4;
+    }
+    .light {
+      --bg: #ffffff;
+      --text: #000000;
+      --bot-bg: #e0e0e0;
+      --user-bg: #2196f3;
+      --header-bg: #f5f5f5;
+      --input-bg: #f0f0f0;
+      --accent: #1976d2;
+    }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      transition: 0.3s ease;
+    }
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    .chat-header {
+      background: var(--header-bg);
+      padding: 15px;
+      font-size: 1.5em;
+      font-weight: bold;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+    }
+    .menu-btn {
+      font-size: 1.4em;
+      margin-right: 15px;
+      cursor: pointer;
+    }
+    .menu {
+      position: absolute;
+      top: 60px;
+      left: 10px;
+      background: var(--header-bg);
+      border: 1px solid var(--accent);
+      border-radius: 5px;
+      display: none;
+      flex-direction: column;
+      min-width: 160px;
+      z-index: 1000;
+    }
+    .menu button {
+      background: none;
+      border: none;
+      color: var(--text);
+      padding: 10px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .menu button:hover {
+      background: var(--accent);
+      color: #fff;
+    }
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .chat-input {
+      display: flex;
+      background: var(--input-bg);
+      padding: 10px;
+    }
+    .chat-input input {
+      flex: 1;
+      padding: 10px;
+      font-size: 1em;
+      border: none;
+      border-radius: 6px;
+    }
+    .chat-input button {
+      margin-left: 10px;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 6px;
+      background: var(--accent);
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .user, .bot {
+      max-width: 80%;
+      margin: 10px;
+      padding: 10px;
+      border-radius: 10px;
+      line-height: 1.5;
+    }
+    .user {
+      align-self: flex-end;
+      background: var(--user-bg);
+    }
+    .bot {
+      align-self: flex-start;
+      background: var(--bot-bg);
+    }
+    .typing {
+      font-style: italic;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      <span class="menu-btn" onclick="toggleMenu()">☰</span>
+      ChatChit - Smarter AI
+    </div>
+    <div class="menu" id="menu">
+      <button onclick="switchTheme()">Theme Shift</button>
+      <button onclick="saveChat()">Save Chat</button>
+      <button onclick="downloadChat()">Download Chat</button>
+      <button onclick="clearChat()">Clear Chat</button>
+    </div>
+    <div class="chat-messages" id="chat-messages"></div>
+    <div class="chat-input">
+      <input type="text" id="user-input" placeholder="Type something smart..." />
+      <button onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const messagesEl = document.getElementById("chat-messages");
+    const inputEl = document.getElementById("user-input");
+    const menuEl = document.getElementById("menu");
+    const huggingFaceApiKey = "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";
+    let memoryContext = [];
+
+    function addMessage(text, sender = "bot") {
+      const msg = document.createElement("div");
+      msg.classList.add(sender);
+      msg.innerHTML = text;
+      messagesEl.appendChild(msg);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function addTyping() {
+      const typing = document.createElement("div");
+      typing.id = "typing";
+      typing.classList.add("bot", "typing");
+      typing.innerText = "ChatChit is typing...";
+      messagesEl.appendChild(typing);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function removeTyping() {
+      const typing = document.getElementById("typing");
+      if (typing) typing.remove();
+    }
+
+    function extractKeywords(text) {
+      return text.toLowerCase().replace(/[^\w\s]/g, "").split(" ").filter(w => !["what", "is", "the", "a", "an", "how", "to", "who", "why", "and", "or", "on", "in", "of", "are", "do", "does"].includes(w)).join(" ");
+    }
+
+    async function queryHuggingFace(prompt) {
+      try {
+        const response = await fetch("https://api-inference.huggingface.co/models/gpt2", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${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}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            inputs: prompt,
+            parameters: { max_new_tokens: 100 }
+          })
+        });
+        const data = await response.json();
+        return data[0]?.generated_text?.slice(prompt.length).trim();
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function searchWikipedia(query) {
+      try {
+        const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.extract || null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function searchDuckDuckGo(query) {
+      try {
+        const url = `https://corsproxy.io/?https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1`;
+        const res = await fetch(url);
+        const data = await res.json();
+        return data.Abstract || data.RelatedTopics?.[0]?.Text || null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function fallbackReplies() {
+      const replies = [
+        "Sorry, I couldn't find that. Can you say it another way?",
+        "Hmm... I'm thinking, but still not sure.",
+        "Let's try finding that on the web together.",
+        "Even smart bots get stuck sometimes!",
+        "That's beyond me... for now!",
+        "Try breaking that down a bit?"
+      ];
+      return replies[Math.floor(Math.random() * replies.length)];
+    }
+
+    async function getBotResponse(currentInput) {
+      const keywords = extractKeywords(currentInput);
+      const memory = memoryContext.slice(-2).join(" ");
+      let fullPrompt = `User: ${memory} ${keywords}\nAI:`;
+      let hfReply = await queryHuggingFace(fullPrompt);
+      if (hfReply && hfReply.length > 30) return hfReply;
+      let wiki = await searchWikipedia(keywords);
+      if (wiki) return wiki;
+      let duck = await searchDuckDuckGo(keywords);
+      if (duck) return duck;
+      return fallbackReplies();
+    }
+
+    async function sendMessage() {
+      const userInput = inputEl.value.trim();
+      if (!userInput) return;
+      addMessage(userInput, "user");
+      memoryContext.push(userInput);
+      inputEl.value = "";
+      addTyping();
+      const botReply = await getBotResponse(userInput);
+      removeTyping();
+      addMessage(botReply, "bot");
+      memoryContext.push(botReply);
+      saveChatToLocal();
+    }
+
+    inputEl.addEventListener("keydown", e => {
+      if (e.key === "Enter") sendMessage();
+    });
+
+    function toggleMenu() {
+      menuEl.style.display = menuEl.style.display === "flex" ? "none" : "flex";
+    }
+
+    function switchTheme() {
+      document.body.classList.toggle("light");
+      toggleMenu();
+    }
+
+    function saveChatToLocal() {
+      localStorage.setItem("chatHistory", messagesEl.innerHTML);
+    }
+
+    function loadChatFromLocal() {
+      const saved = localStorage.getItem("chatHistory");
+      if (saved) messagesEl.innerHTML = saved;
+    }
+
+    function saveChat() {
+      alert("Chat saved to browser storage.");
+      saveChatToLocal();
+      toggleMenu();
+    }
+
+    function clearChat() {
+      if (confirm("Are you sure you want to clear the chat?")) {
+        messagesEl.innerHTML = "";
+        localStorage.removeItem("chatHistory");
+        memoryContext = [];
+      }
+      toggleMenu();
+    }
+
+    function downloadChat() {
+      const text = [...messagesEl.children].map(el => {
+        const who = el.classList.contains("user") ? "You" : "ChatChit";
+        return `${who}: ${el.innerText}`;
+      }).join("\n");
+      const blob = new Blob([text], { type: "text/plain" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "chat-history.txt";
+      link.click();
+      toggleMenu();
+    }
+
+    loadChatFromLocal();
+  </script>
+</body>
+</html>
